@@ -1,0 +1,126 @@
+// Modelo de dados — Gestão de Marmitaria (Cantinho do Sabor)
+// Valores monetários sempre em Decimal(10,2), nunca float.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoProduto {
+  MARMITA
+  PRATO
+  BEBIDA
+  OUTRO
+}
+
+enum StatusVenda {
+  CONCLUIDA
+  CANCELADA
+}
+
+enum TipoPreparo {
+  PROTEINA
+  ACOMPANHAMENTO
+}
+
+model Produto {
+  id         Int         @id @default(autoincrement())
+  nome       String      @db.VarChar(100)
+  descricao  String?     @db.Text
+  tipo       TipoProduto
+  precoVenda Decimal     @map("preco_venda") @db.Decimal(10, 2)
+  custoMedio Decimal     @map("custo_medio") @db.Decimal(10, 2)
+  imagemUrl  String?     @map("imagem_url") @db.VarChar(255)
+  ativo      Boolean     @default(true)
+  criadoEm   DateTime    @default(now()) @map("criado_em") @db.Timestamptz(6)
+  itens      ItemVenda[]
+  cardapios  CardapioProduto[]
+
+  @@map("produto")
+}
+
+model Venda {
+  id                 Int         @id @default(autoincrement())
+  dataHora           DateTime    @default(now()) @map("data_hora") @db.Timestamptz(6)
+  valorTotal         Decimal     @map("valor_total") @db.Decimal(10, 2)
+  status             StatusVenda @default(CONCLUIDA)
+  canceladaEm        DateTime?   @map("cancelada_em") @db.Timestamptz(6)
+  motivoCancelamento String?     @map("motivo_cancelamento") @db.VarChar(255)
+  itens              ItemVenda[]
+
+  @@index([dataHora])
+  @@map("venda")
+}
+
+model ItemVenda {
+  id            Int     @id @default(autoincrement())
+  vendaId       Int     @map("venda_id")
+  produtoId     Int     @map("produto_id")
+  quantidade    Int
+  precoUnitario Decimal @map("preco_unitario") @db.Decimal(10, 2)
+  custoUnitario Decimal @map("custo_unitario") @db.Decimal(10, 2)
+  subtotal      Decimal @db.Decimal(10, 2)
+  venda         Venda   @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  produto       Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([vendaId])
+  @@index([produtoId])
+  @@map("item_venda")
+}
+
+// Proteínas e acompanhamentos usados para montar o cardápio do dia (RF011)
+model Preparo {
+  id        Int               @id @default(autoincrement())
+  nome      String            @db.VarChar(100)
+  tipo      TipoPreparo
+  ativo     Boolean           @default(true)
+  criadoEm  DateTime          @default(now()) @map("criado_em") @db.Timestamptz(6)
+  cardapios CardapioPreparo[]
+
+  @@map("preparo")
+}
+
+// Cardápio de um dia (RF010, RF012). Um por data (dia local de Cuiabá).
+model Cardapio {
+  id           Int               @id @default(autoincrement())
+  data         DateTime          @unique @db.Date
+  criadoEm     DateTime          @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm DateTime          @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  produtos     CardapioProduto[]
+  preparos     CardapioPreparo[]
+
+  @@map("cardapio")
+}
+
+// Marmitas e pratos do dia, com nome e preço como divulgados naquele dia
+model CardapioProduto {
+  cardapioId Int      @map("cardapio_id")
+  produtoId  Int      @map("produto_id")
+  nome       String   @db.VarChar(100)
+  preco      Decimal  @db.Decimal(10, 2)
+  ordem      Int
+  cardapio   Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
+  produto    Produto  @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@id([cardapioId, produtoId])
+  @@index([produtoId])
+  @@map("cardapio_produto")
+}
+
+// Proteínas e acompanhamentos do dia (nome como divulgado naquele dia)
+model CardapioPreparo {
+  cardapioId Int      @map("cardapio_id")
+  preparoId  Int      @map("preparo_id")
+  nome       String   @db.VarChar(100)
+  ordem      Int
+  cardapio   Cardapio @relation(fields: [cardapioId], references: [id], onDelete: Cascade)
+  preparo    Preparo  @relation(fields: [preparoId], references: [id], onDelete: Restrict)
+
+  @@id([cardapioId, preparoId])
+  @@index([preparoId])
+  @@map("cardapio_preparo")
+}
